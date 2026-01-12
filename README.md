@@ -1,5 +1,9 @@
 # Meet Call MQTT Bridge
 
+[![Build and bundle the Stream Deck plugin](https://github.com/CraigBell/meet-call-mqtt-bridge/actions/workflows/streamdeck-plugin-build.yml/badge.svg)](https://github.com/CraigBell/meet-call-mqtt-bridge/actions/workflows/streamdeck-plugin-build.yml)
+[![GitHub release](https://img.shields.io/github/v/release/CraigBell/meet-call-mqtt-bridge)](https://github.com/CraigBell/meet-call-mqtt-bridge/releases)
+[![License](https://img.shields.io/github/license/CraigBell/meet-call-mqtt-bridge)](LICENSE)
+
 A Stream Deck/OpenDeck plugin + Chrome extension fork that controls Google Meet and publishes call state to MQTT so Home Assistant automations can react (e.g., lower Echo volume during calls).
 
 ## What it does
