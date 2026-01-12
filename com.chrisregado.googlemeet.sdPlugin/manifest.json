@@ -428,7 +428,7 @@
   "Name": "Meet Call MQTT Bridge",
   "Icon": "images/plugin_icon",
   "URL": "https://github.com/CraigBell/meet-call-mqtt-bridge",
-  "Version": "0.1.0",
+  "Version": "0.1.1",
   "Category": "Google Meet",
   "CategoryIcon": "images/category_icon",
   "OS": [

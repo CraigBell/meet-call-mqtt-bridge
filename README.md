@@ -47,6 +47,21 @@ Set environment variables for the plugin process (OpenDeck or Stream Deck launch
 
 The plugin retries MQTT connections automatically if the broker is offline when it starts.
 
+If you can't set environment variables in OpenDeck, drop a JSON file next to the plugin:
+
+`~/Library/Application Support/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin/meet-mqtt.json`
+
+Example:
+
+```json
+{
+  "MQTT_URL": "mqtt://broker.local:1883",
+  "MQTT_USER": "",
+  "MQTT_PASS": "",
+  "MEET_MQTT_TOPIC": "meet/call_active"
+}
+```
+
 ## OpenDeck quick install
 
 1. Copy `com.chrisregado.googlemeet.sdPlugin` into:

@@ -145,3 +145,6 @@ dmypy.json
 DistributionTool.exe
 DistributionTool
 com.chrisregado.googlemeet.streamDeckPlugin
+meet-mqtt.json
+**/meet-mqtt.json
+.meet-call-mqtt-bridge.json

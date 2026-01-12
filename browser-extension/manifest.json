@@ -1,6 +1,6 @@
 {
   "name": "Meet Call MQTT Bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connects to a local Stream Deck/OpenDeck plugin to control Google Meet and publish call state to MQTT.",
   "author": "Craig Bell",
   "homepage_url": "https://github.com/CraigBell/meet-call-mqtt-bridge",

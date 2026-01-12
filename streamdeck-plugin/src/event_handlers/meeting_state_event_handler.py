@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import sys
 from urllib.parse import urlparse
 
 try:
@@ -31,13 +33,20 @@ class MeetingStateEventHandler(EventHandler):
             self._logger.error("paho-mqtt not available; meeting state MQTT disabled.")
             return
 
-        mqtt_url = os.environ.get("MQTT_URL")
+        config = self._load_config()
+        mqtt_url = os.environ.get("MQTT_URL") or config.get("MQTT_URL")
         if not mqtt_url:
             self._logger.warning("MQTT_URL not set; meeting state MQTT disabled.")
             return
-        mqtt_user = os.environ.get("MQTT_USER", "")
-        mqtt_pass = os.environ.get("MQTT_PASS", "")
-        self._mqtt_topic = os.environ.get("MEET_MQTT_TOPIC") or os.environ.get("MQTT_TOPIC") or "meet/call_active"
+        mqtt_user = os.environ.get("MQTT_USER") or config.get("MQTT_USER", "")
+        mqtt_pass = os.environ.get("MQTT_PASS") or config.get("MQTT_PASS", "")
+        self._mqtt_topic = (
+            os.environ.get("MEET_MQTT_TOPIC")
+            or os.environ.get("MQTT_TOPIC")
+            or config.get("MEET_MQTT_TOPIC")
+            or config.get("MQTT_TOPIC")
+            or "meet/call_active"
+        )
 
         parsed = urlparse(mqtt_url if "://" in mqtt_url else f"mqtt://{mqtt_url}")
         host = parsed.hostname
@@ -63,6 +72,33 @@ class MeetingStateEventHandler(EventHandler):
         self._mqtt_client = client
         self._mqtt_enabled = True
         self._logger.info(f"Meeting state MQTT enabled (broker={host}:{port}, topic={self._mqtt_topic}).")
+
+    def _load_config(self) -> dict:
+        """
+        Load optional MQTT config from a JSON file.
+        Keys: MQTT_URL, MQTT_USER, MQTT_PASS, MEET_MQTT_TOPIC (or MQTT_TOPIC).
+        """
+        config_paths = []
+        env_path = os.environ.get("MEET_MQTT_CONFIG")
+        if env_path:
+            config_paths.append(env_path)
+
+        exe_dir = os.path.dirname(sys.executable)
+        config_paths.extend([
+            os.path.join(exe_dir, "meet-mqtt.json"),
+            os.path.abspath(os.path.join(exe_dir, "..", "..", "..", "meet-mqtt.json")),
+            os.path.join(os.path.expanduser("~"), ".config", "meet-call-mqtt-bridge.json"),
+            os.path.join(os.path.expanduser("~"), ".meet-call-mqtt-bridge.json"),
+        ])
+
+        for path in config_paths:
+            try:
+                if path and os.path.exists(path):
+                    with open(path, "r", encoding="utf-8") as fh:
+                        return json.load(fh) or {}
+            except Exception:
+                self._logger.exception(f"Failed to read MQTT config file: {path}")
+        return {}
 
     def _on_connect(self, client, userdata, flags, rc) -> None:
         if rc == 0:
