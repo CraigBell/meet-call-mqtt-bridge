@@ -22,6 +22,7 @@ class MeetingStateEventHandler(EventHandler):
         self._mqtt_client = None
         self._mqtt_topic = None
         self._mqtt_enabled = False
+        self._mqtt_connected = False
         self._last_active = None
         self._setup_mqtt()
 
@@ -48,26 +49,47 @@ class MeetingStateEventHandler(EventHandler):
         client = mqtt.Client()
         if mqtt_user or mqtt_pass:
             client.username_pw_set(mqtt_user or None, mqtt_pass or None)
+        client.reconnect_delay_set(min_delay=2, max_delay=60)
+        client.on_connect = self._on_connect
+        client.on_disconnect = self._on_disconnect
+
         try:
-            client.connect(host, port, keepalive=30)
+            client.connect_async(host, port, keepalive=30)
+            client.loop_start()
         except Exception:
-            self._logger.exception("Failed to connect to MQTT broker; meeting state MQTT disabled.")
+            self._logger.exception("Failed to start MQTT client; meeting state MQTT disabled.")
             return
 
-        client.loop_start()
         self._mqtt_client = client
         self._mqtt_enabled = True
         self._logger.info(f"Meeting state MQTT enabled (broker={host}:{port}, topic={self._mqtt_topic}).")
 
+    def _on_connect(self, client, userdata, flags, rc) -> None:
+        if rc == 0:
+            self._mqtt_connected = True
+            self._logger.info("MQTT connected.")
+            if self._last_active is not None:
+                self._publish_state(self._last_active, "reconnect")
+        else:
+            self._logger.warning(f"MQTT connect failed with rc={rc}.")
+
+    def _on_disconnect(self, client, userdata, rc) -> None:
+        self._mqtt_connected = False
+        if rc != 0:
+            self._logger.warning("MQTT disconnected unexpectedly; will retry.")
+
     def _publish_state(self, active: bool, reason: str) -> None:
         if not self._mqtt_enabled:
             return
-        if active == self._last_active:
+        if active == self._last_active and self._mqtt_connected:
+            return
+        self._last_active = active
+        if not self._mqtt_connected:
+            self._logger.debug("MQTT not connected; deferring publish.")
             return
         payload = "true" if active else "false"
         try:
             self._mqtt_client.publish(self._mqtt_topic, payload, qos=0, retain=True)
-            self._last_active = active
             self._logger.info(f"Meeting state -> {self._mqtt_topic} {payload} ({reason})")
         except Exception:
             self._logger.exception("Failed to publish meeting state to MQTT.")

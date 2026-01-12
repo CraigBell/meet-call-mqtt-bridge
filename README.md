@@ -45,6 +45,16 @@ Set environment variables for the plugin process (OpenDeck or Stream Deck launch
 - `MQTT_PASS` (optional)
 - `MEET_MQTT_TOPIC` (optional, default: `meet/call_active`)
 
+The plugin retries MQTT connections automatically if the broker is offline when it starts.
+
+## OpenDeck quick install
+
+1. Copy `com.chrisregado.googlemeet.sdPlugin` into:
+   `~/Library/Application Support/opendeck/plugins/`
+2. Restart OpenDeck.
+3. If OpenDeck asks for a plugin file, point it at:
+   `~/Library/Application Support/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin/manifest.json`
+
 ## Home Assistant examples
 
 ### Sensor
@@ -106,6 +116,15 @@ rm -rf ../com.chrisregado.googlemeet.sdPlugin/dist/macos
 pyinstaller --clean --dist "../com.chrisregado.googlemeet.sdPlugin/dist/macos" src/main.py
 rm -rf build
 ```
+
+## Troubleshooting
+
+- **No MQTT messages**: verify `MQTT_URL` is set and check plugin logs at:
+  `~/Library/Logs/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin.log`
+- **OpenDeck shows “Disconnected”**: ensure the Chrome extension is enabled and loaded
+  from `browser-extension` in `chrome://extensions`.
+- **Chrome extension not connecting**: ad blockers can block `ws://127.0.0.1:2394`;
+  allowlist `meet.google.com`.
 
 ## Attribution
 
