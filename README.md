@@ -141,6 +141,32 @@ rm -rf build
 - **Chrome extension not connecting**: ad blockers can block `ws://127.0.0.1:2394`;
   allowlist `meet.google.com`.
 
+## Teams and Zoom (native apps)
+
+Meet cannot see the local Teams or Zoom apps. `mac-call-helper` is a small Swift LaunchAgent that:
+
+- Sleeps until Teams (`com.microsoft.teams2`) or Zoom (`us.zoom.xos`) is running
+- Treats a meeting as active when a meeting window or mute/camera control is present (not microphone level)
+- Publishes the same MQTT topic as Meet (`jabra/call_active` via `meet-mqtt.json`) so Alexa ducking needs no HA change
+- Sends mute/camera/leave/hand/reactions to **that app’s PID** (not the frontmost window)
+- Feeds OpenDeck keys via plugin `com.craigbell.callbridge.sdPlugin` (live mute/camera artwork while idle; grey “disconnected” tiles are not used)
+- Zoom profile keeps mute, camera, leave, raise hand, and Zoom’s real reaction shortcuts (Option-Command-4..8). Background blur is Teams-only.
+- Optionally switches OpenDeck profiles `Teams` / `Zoom` / `Default`
+
+Install (Mac):
+
+```sh
+bash scripts/install-call-bridge.sh
+```
+
+Then grant **Accessibility** (and Input Monitoring if macOS asks) to `~/Library/Application Support/call-bridge/call-bridge` and restart OpenDeck. If Alexa never ducks from Teams/Zoom, also allow that binary under **Local Network**. OpenDeck’s Call Bridge plugin publishes the same MQTT topic as a backup (Meet already required OpenDeck).
+
+```sh
+~/Library/Application\ Support/call-bridge/call-bridge doctor
+```
+
+If Teams or Zoom updates and keys go dumb, run `dump` during a test call and pin new button titles in `MeetingMonitor.swift`. Do not reinstall `com.microsoft.teams.sdPlugin`.
+
 ## Attribution
 
 This project is a fork of https://github.com/ChrisRegado/streamdeck-googlemeet and retains its action UUIDs and UI assets.

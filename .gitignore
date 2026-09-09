@@ -148,3 +148,7 @@ com.chrisregado.googlemeet.streamDeckPlugin
 meet-mqtt.json
 **/meet-mqtt.json
 .meet-call-mqtt-bridge.json
+.build/
+.swiftpm/
+mac-call-helper/.build/
+local-unpacked-snapshot-20260909/

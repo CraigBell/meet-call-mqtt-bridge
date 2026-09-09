@@ -1,0 +1,119 @@
+{
+  "SDKVersion": 2,
+  "Author": "Craig Bell",
+  "Name": "Call Bridge",
+  "Description": "Teams and Zoom meeting controls with mute/camera state. Alexa ducking uses the existing MQTT topic.",
+  "Icon": "icons/plugin",
+  "Category": "Call Bridge",
+  "CategoryIcon": "icons/plugin",
+  "Version": "0.1.0",
+  "CodePathMac": "call-bridge",
+  "OS": [{ "Platform": "mac", "MinimumVersion": "13.0" }],
+  "Software": { "MinimumVersion": "4.1" },
+  "Actions": [
+    {
+      "Icon": "icons/toggleMute/actions/ToggleMute",
+      "Name": "Mute",
+      "UUID": "com.craigbell.callbridge.togglemute",
+      "Tooltip": "Mute or unmute the native Teams or Zoom meeting.",
+      "SupportedInMultiActions": false,
+      "States": [
+        { "Image": "icons/toggleMute/states/MuteDisabled", "Name": "Disconnected" },
+        { "Image": "icons/toggleMute/states/Mute", "Name": "Muted" },
+        { "Image": "icons/toggleMute/states/Unmute", "Name": "Unmuted" }
+      ]
+    },
+    {
+      "Icon": "icons/toggleVideo/actions/ToggleCamera",
+      "Name": "Camera",
+      "UUID": "com.craigbell.callbridge.togglecamera",
+      "Tooltip": "Toggle camera in the native Teams or Zoom meeting.",
+      "SupportedInMultiActions": false,
+      "States": [
+        { "Image": "icons/toggleVideo/states/CameraOffDisabled", "Name": "Disconnected" },
+        { "Image": "icons/toggleVideo/states/CameraOff", "Name": "Camera off" },
+        { "Image": "icons/toggleVideo/states/CameraOn", "Name": "Camera on" }
+      ]
+    },
+    {
+      "Icon": "icons/leave/actions/LeaveCall",
+      "Name": "Leave",
+      "UUID": "com.craigbell.callbridge.leave",
+      "Tooltip": "Leave the native Teams or Zoom meeting.",
+      "SupportedInMultiActions": true,
+      "States": [
+        { "Image": "icons/leave/states/LeaveCallDisabled", "Name": "Disconnected" },
+        { "Image": "icons/leave/states/LeaveCall", "Name": "Leave" }
+      ]
+    },
+    {
+      "Icon": "icons/toggleHand/actions/ToggleHand",
+      "Name": "Raise hand",
+      "UUID": "com.craigbell.callbridge.togglehand",
+      "Tooltip": "Raise or lower hand.",
+      "SupportedInMultiActions": false,
+      "States": [
+        { "Image": "icons/toggleHand/states/HandDownDisabled", "Name": "Disconnected" },
+        { "Image": "icons/toggleHand/states/HandDown", "Name": "Hand down" },
+        { "Image": "icons/toggleHand/states/HandUp", "Name": "Hand up" }
+      ]
+    },
+    {
+      "Icon": "icons/toggleBlur/actions/ToggleBlur",
+      "Name": "Background blur",
+      "UUID": "com.craigbell.callbridge.toggleblur",
+      "Tooltip": "Toggle background blur (Teams).",
+      "SupportedInMultiActions": false,
+      "States": [
+        { "Image": "icons/toggleBlur/states/BlurOnDisabled", "Name": "Disconnected" },
+        { "Image": "icons/toggleBlur/states/BlurOff", "Name": "Blur off" },
+        { "Image": "icons/toggleBlur/states/BlurOn", "Name": "Blur on" }
+      ]
+    },
+    {
+      "Icon": "icons/reactLike/actions/Reaction-Like",
+      "Name": "React: Like",
+      "UUID": "com.craigbell.callbridge.react.like",
+      "States": [
+        { "Image": "icons/reactLike/states/Reaction-LikeDisabled" },
+        { "Image": "icons/reactLike/states/Reaction-Like" }
+      ]
+    },
+    {
+      "Icon": "icons/reactLove/actions/Reaction-Love",
+      "Name": "React: Love",
+      "UUID": "com.craigbell.callbridge.react.love",
+      "States": [
+        { "Image": "icons/reactLove/states/Reaction-LoveDisabled" },
+        { "Image": "icons/reactLove/states/Reaction-Love" }
+      ]
+    },
+    {
+      "Icon": "icons/reactLaugh/actions/Reaction-Laugh",
+      "Name": "React: Laugh",
+      "UUID": "com.craigbell.callbridge.react.laugh",
+      "States": [
+        { "Image": "icons/reactLaugh/states/Reaction-LaughDisabled" },
+        { "Image": "icons/reactLaugh/states/Reaction-Laugh" }
+      ]
+    },
+    {
+      "Icon": "icons/reactWow/actions/Reaction-Wow",
+      "Name": "React: Wow",
+      "UUID": "com.craigbell.callbridge.react.wow",
+      "States": [
+        { "Image": "icons/reactWow/states/Reaction-WowDisabled" },
+        { "Image": "icons/reactWow/states/Reaction-Wow" }
+      ]
+    },
+    {
+      "Icon": "icons/reactApplause/actions/Reaction-Applause",
+      "Name": "React: Applause",
+      "UUID": "com.craigbell.callbridge.react.applause",
+      "States": [
+        { "Image": "icons/reactApplause/states/Reaction-ApplauseDisabled" },
+        { "Image": "icons/reactApplause/states/Reaction-Applause" }
+      ]
+    }
+  ]
+}
