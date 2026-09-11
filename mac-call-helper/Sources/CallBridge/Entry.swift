@@ -19,9 +19,27 @@ enum CallBridgeMain {
             doctor()
         case "dump":
             dump()
+        case "hid-dump":
+            JabraHID.runOnce { $0.printDump() }
+        case "hid-mute":
+            JabraHID.runOnce { hid in
+                let next = hid.toggleMute(currentlyMuted: nil, inCall: JabraMonitor().snapshot().contains { $0.running })
+                print("hid-mute \(next.map { $0 ? "muted" : "unmuted" } ?? "failed")")
+            }
+        case "hid-hangup":
+            JabraHID.runOnce { hid in
+                let ok = hid.hangUp(inCall: JabraMonitor().snapshot().contains { $0.running })
+                print("hid-hangup \(ok ? "ok" : "failed")")
+            }
+        case "mute-toggle":
+            _ = JabraMonitor.toggleMute()
+        case "volume-up":
+            _ = JabraMonitor.adjustVolume(0.10)
+        case "volume-down":
+            _ = JabraMonitor.adjustVolume(-0.10)
         default:
             FileHandle.standardError.write(
-                Data("usage: call-bridge daemon|plugin|doctor|dump\n".utf8))
+                Data("usage: call-bridge daemon|plugin|doctor|dump|hid-dump|hid-mute|hid-hangup|mute-toggle|volume-up|volume-down\n".utf8))
             exit(1)
         }
     }
@@ -54,21 +72,35 @@ enum CallBridgeMain {
 
     static func doctor() {
         let cfg = BridgeConfig.load()
-        print("ax trusted: \(AXScanner.isTrusted(prompt: true))")
+        print("ax trusted: \(AXScanner.isTrusted(prompt: false))")
+        print("post-event: \(Keystroke.canPostEvents())")
         fflush(stdout)
         print("mqtt url set: \(!cfg.mqttURL.isEmpty) topic: \(cfg.mqttTopic)")
         print("socket: \(Paths.socket) exists=\(FileManager.default.fileExists(atPath: Paths.socket))")
-        let apps = AXScanner.meetingApps()
-        if apps.isEmpty {
-            print("teams/zoom: not running")
+        let jabra = JabraMonitor().snapshot()
+        if jabra.isEmpty {
+            print("jabra: no Core Audio device named Jabra")
         } else {
-            for app in apps {
-                print("\(app.kind) pid=\(app.pid) bundle=\(app.bundle)")
-                print(AXScanner.dump(pid: app.pid))
+            for dev in jabra {
+                print("jabra id=\(dev.id) name=\(dev.name) running=\(dev.running)")
             }
         }
-        let state = MeetingMonitor().scan()
-        print("scan active=\(state.active) app=\(state.app ?? "-") muted=\(String(describing: state.muted))")
+        print("jabra inCall=\(jabra.contains { $0.running })")
+        if let client = JabraMonitor.inputClient() {
+            print("jabra inputClient=\(client.name) pid=\(client.pid) \(client.bundle)")
+        } else {
+            print("jabra inputClient=none")
+        }
+        if let target = MeetingMonitor.activeCallTarget() {
+            print("mute target=\(target.kind) pid=\(target.pid)")
+        } else {
+            print("mute target=none")
+        }
+        if let target = MeetingMonitor.resolveTarget() {
+            print("opendeck profile=\(ProfileSwitcher.currentProfile()) keys -> \(target.kind) pid=\(target.pid)")
+        } else {
+            print("opendeck profile=\(ProfileSwitcher.currentProfile()) keys -> no Teams/Zoom")
+        }
     }
 
     static func dump() {

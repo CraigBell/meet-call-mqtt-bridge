@@ -40,19 +40,45 @@ enum AXScanner {
         }
     }
 
-    static func windowTitles(pid: pid_t) -> [String] {
+    static func axWindows(pid: pid_t) -> [AXUIElement] {
         let app = AXUIElementCreateApplication(pid)
-        guard let windows = copyAttr(app, kAXWindowsAttribute) as? [AXUIElement] else { return [] }
-        return windows.compactMap { copyString($0, kAXTitleAttribute) }.filter { !$0.isEmpty }
+        return (copyAttr(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+    }
+
+    static func windowTitles(pid: pid_t) -> [String] {
+        axWindows(pid: pid).compactMap { copyString($0, kAXTitleAttribute) }.filter { !$0.isEmpty }
     }
 
     static func hasOnScreenWindow(pid: pid_t) -> Bool {
-        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        largestWindowPid(among: [pid]) != nil
+    }
+
+    static func raise(pid: pid_t) {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        guard let window = axWindows(pid: pid).first else { return }
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    }
+
+    static func largestWindowPid(among pids: Set<pid_t>) -> pid_t? {
+        guard !pids.isEmpty else { return nil }
+        let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
-        return list.contains { info in
+        var bestPid: pid_t = 0
+        var bestArea: Double = 0
+        for info in list {
             let owner = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value ?? 0
-            return owner == pid
+            guard pids.contains(owner) else { continue }
+            let bounds = info[kCGWindowBounds as String] as? [String: Any]
+            let w = bounds?["Width"] as? Double ?? 0
+            let h = bounds?["Height"] as? Double ?? 0
+            let area = w * h
+            if h >= 80, area > bestArea {
+                bestArea = area
+                bestPid = owner
+            }
         }
+        return bestPid == 0 ? nil : bestPid
     }
 
     static func cgWindowTitles(ownerNames: [String]) -> [String] {
@@ -80,9 +106,10 @@ enum AXScanner {
     }
 
     static func dump(pid: pid_t) -> String {
-        let titles = windowTitles(pid: pid)
+        let windows = axWindows(pid: pid)
+        let titles = windows.compactMap { copyString($0, kAXTitleAttribute) }.filter { !$0.isEmpty }
         let btns = buttons(pid: pid, limit: 600)
-        var lines: [String] = ["windows:"]
+        var lines: [String] = ["windows: \(windows.count)"]
         lines.append(contentsOf: titles.map { "  - \($0)" })
         lines.append("buttons:")
         lines.append(contentsOf: btns.prefix(80).map { "  - \($0.title)" })

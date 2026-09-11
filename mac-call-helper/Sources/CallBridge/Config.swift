@@ -5,7 +5,7 @@ struct BridgeConfig {
     var mqttUser: String = ""
     var mqttPass: String = ""
     var mqttTopic: String = "jabra/call_active"
-    var switchProfiles: Bool = true
+    var switchProfiles: Bool = false
     var defaultProfile: String = "Default"
     var teamsProfile: String = "Teams"
     var zoomProfile: String = "Zoom"
@@ -14,11 +14,11 @@ struct BridgeConfig {
         var cfg = BridgeConfig()
         let urls: [URL] = [
             URL(fileURLWithPath: NSHomeDirectory())
+                .appendingPathComponent("Library/Application Support/call-bridge/config.json"),
+            URL(fileURLWithPath: NSHomeDirectory())
                 .appendingPathComponent("Library/Application Support/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin/meet-mqtt.json"),
             URL(fileURLWithPath: NSHomeDirectory())
                 .appendingPathComponent(".config/meet-call-mqtt-bridge.json"),
-            URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Library/Application Support/call-bridge/config.json"),
         ]
         for url in urls {
             guard let data = try? Data(contentsOf: url),

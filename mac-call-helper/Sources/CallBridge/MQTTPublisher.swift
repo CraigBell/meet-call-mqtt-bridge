@@ -12,7 +12,8 @@ final class MQTTPublisher {
     private var fd: Int32 = -1
     private var lastPayload: String?
     private let queue = DispatchQueue(label: "at.craig.call-bridge.mqtt")
-    private var pingTimer: DispatchSourceTimer?
+    private var pollTimer: DispatchSourceTimer?
+    private var lastPing = Date.distantPast
 
     init(host: String, port: UInt16, user: String, pass: String, topic: String, clientId: String) {
         self.host = host
@@ -69,42 +70,53 @@ final class MQTTPublisher {
             scheduleReconnect()
             return
         }
+        let flags = fcntl(sock, F_GETFL, 0)
+        if flags >= 0 {
+            _ = fcntl(sock, F_SETFL, flags | O_NONBLOCK)
+        }
         fd = sock
         Log.line("mqtt connected \(host):\(port)")
         writePacket(connectPacket())
         if let last = lastPayload {
             writePacket(publishPacket(last))
         }
-        startPing()
-        queue.async { [weak self] in self?.readLoop() }
+        lastPing = Date()
+        startPoll()
     }
 
-    private func readLoop() {
+    private func startPoll() {
+        pollTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 0.3, repeating: 0.3)
+        timer.setEventHandler { [weak self] in
+            self?.poll()
+        }
+        timer.resume()
+        pollTimer = timer
+    }
+
+    private func poll() {
+        guard fd >= 0 else { return }
         var buf = [UInt8](repeating: 0, count: 256)
-        while fd >= 0 {
+        while true {
             let n = Darwin.recv(fd, &buf, buf.count, 0)
-            if n <= 0 {
+            if n > 0 { continue }
+            if n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
                 Log.line("mqtt disconnected")
                 scheduleReconnect()
                 return
             }
+            break
         }
-    }
-
-    private func startPing() {
-        pingTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 30, repeating: 30)
-        timer.setEventHandler { [weak self] in
-            self?.writePacket(Data([0xC0, 0x00]))
+        if Date().timeIntervalSince(lastPing) >= 30 {
+            lastPing = Date()
+            writePacket(Data([0xC0, 0x00]))
         }
-        timer.resume()
-        pingTimer = timer
     }
 
     private func scheduleReconnect() {
-        pingTimer?.cancel()
-        pingTimer = nil
+        pollTimer?.cancel()
+        pollTimer = nil
         closeFD()
         queue.asyncAfter(deadline: .now() + 5) { [weak self] in
             self?.connect()

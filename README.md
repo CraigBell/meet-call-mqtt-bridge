@@ -1,26 +1,22 @@
-# Meet Call MQTT Bridge
+# Meet / call bridge
 
 [![Build and bundle the Stream Deck plugin](https://github.com/CraigBell/meet-call-mqtt-bridge/actions/workflows/streamdeck-plugin-build.yml/badge.svg)](https://github.com/CraigBell/meet-call-mqtt-bridge/actions/workflows/streamdeck-plugin-build.yml)
 [![GitHub release](https://img.shields.io/github/v/release/CraigBell/meet-call-mqtt-bridge)](https://github.com/CraigBell/meet-call-mqtt-bridge/releases)
 [![License](https://img.shields.io/github/license/CraigBell/meet-call-mqtt-bridge)](LICENSE)
 
-A Stream Deck/OpenDeck plugin + Chrome extension fork that controls Google Meet and publishes call state to MQTT so Home Assistant automations can react (e.g., lower Echo volume during calls).
+OpenDeck keys for Google Meet, Teams, and Zoom, plus Alexa ducking from the **Jabra headset** (any video call).
 
 ## What it does
 
-- Uses the original Google Meet control buttons (mic, camera, leave call, etc.)
-- Publishes meeting state changes to MQTT (`true` for in-call, `false` for not in-call)
-- Works with OpenDeck or the Stream Deck desktop app
+- Google Meet: Chrome plugin still owns camera/hand/chat/reactions; mute and leave are Jabra like the other pages
+- Teams and Zoom: Call Bridge keys on their OpenDeck profiles (pick the profile yourself)
+- Alexa: Call Bridge watches the Jabra Engage 75 in Core Audio and publishes `jabra/call_active`. Home Assistant does not care which VC app you used
 
-## Differences from upstream
-
-- Adds MQTT publishing for meeting state
-- Adds a Meet call detector in the Chrome extension
-- Defaults are removed; MQTT is configured via environment variables
+Meet’s Chrome extension does **not** publish MQTT. That was VC-specific and fought Teams.
 
 ## Setup
 
-### 1) Install the OpenDeck/Stream Deck plugin
+### 1) Install the OpenDeck/Stream Deck Meet plugin
 
 OpenDeck looks for plugins in:
 
@@ -36,31 +32,7 @@ Chrome -> `chrome://extensions` -> enable Developer mode -> Load unpacked -> sel
 
 `browser-extension`
 
-### 3) Configure MQTT
-
-Set environment variables for the plugin process (OpenDeck or Stream Deck launcher):
-
-- `MQTT_URL` (required), e.g. `mqtt://broker.local:1883`
-- `MQTT_USER` (optional)
-- `MQTT_PASS` (optional)
-- `MEET_MQTT_TOPIC` (optional, default: `meet/call_active`)
-
-The plugin retries MQTT connections automatically if the broker is offline when it starts.
-
-If you can't set environment variables in OpenDeck, drop a JSON file next to the plugin:
-
-`~/Library/Application Support/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin/meet-mqtt.json`
-
-Example:
-
-```json
-{
-  "MQTT_URL": "mqtt://broker.local:1883",
-  "MQTT_USER": "",
-  "MQTT_PASS": "",
-  "MEET_MQTT_TOPIC": "meet/call_active"
-}
-```
+Reload the extension after pulling this repo so the old Meet MQTT detector is gone.
 
 ## OpenDeck quick install
 
@@ -70,15 +42,53 @@ Example:
 3. If OpenDeck asks for a plugin file, point it at:
    `~/Library/Application Support/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin/manifest.json`
 
-## Home Assistant examples
+## Alexa ducking (any VC)
 
-### Sensor
+`mac-call-helper` is a small Swift LaunchAgent that:
+
+- Watches the **Jabra** headset in Core Audio (`DeviceIsRunningSomewhere`). When the Engage 75 is in a Softphone call, it publishes retained `true`/`false` on `jabra/call_active`
+- Mute and hang-up on every OpenDeck profile (Default / Meet / Teams / Zoom) talk to the Jabra over HID **without seizing** the device, so Jabra Direct keeps the call lock. Each page keeps its own icons
+- Meet / Teams / Zoom volume keys adjust Jabra; Default volume stays Alexa
+- Camera / hand / blur / Zoom reactions still go to the VC app (System Events shortcuts). Teams meeting reactions have no public shortcut
+- Does **not** use the Jabra SDK or exclusive HID seize
+- Does **not** scrape Teams windows and does not auto-switch OpenDeck profiles
+
+MQTT config lives on the Mac helper, not in the Meet plugin:
+
+`~/Library/Application Support/call-bridge/config.json`
+
+```json
+{
+  "MQTT_URL": "mqtt://broker.local:1883",
+  "MQTT_USER": "",
+  "MQTT_PASS": "",
+  "MQTT_TOPIC": "jabra/call_active"
+}
+```
+
+Install (Mac):
+
+```sh
+bash scripts/install-call-bridge.sh
+```
+
+Grant **Accessibility** to `~/Library/Application Support/call-bridge/call-bridge` so Teams/Zoom camera keys can run. If macOS asks to control **System Events**, allow it. Alexa ducking and Jabra mute/hang-up do not need that.
+
+```sh
+~/Library/Application\ Support/call-bridge/call-bridge doctor
+```
+
+Do not reinstall `com.microsoft.teams.sdPlugin`.
+
+### Home Assistant examples
+
+#### Sensor
 
 ```yaml
 mqtt:
   sensor:
     - name: "Jabra Call Status"
-      state_topic: "meet/call_active"
+      state_topic: "jabra/call_active"
       value_template: >-
         {% if value | lower == 'true' %}
           on-air
@@ -87,18 +97,18 @@ mqtt:
         {% endif %}
 ```
 
-### Binary sensor (preferred)
+#### Binary sensor (preferred)
 
 ```yaml
 mqtt:
   binary_sensor:
     - name: "Jabra Call Active"
-      state_topic: "meet/call_active"
+      state_topic: "jabra/call_active"
       payload_on: "true"
       payload_off: "false"
 ```
 
-### Automation example
+#### Automation example
 
 ```yaml
 alias: Jabra / Call-aware Echo Volume
@@ -120,7 +130,7 @@ action:
 mode: restart
 ```
 
-## Building the plugin (macOS)
+## Building the Meet plugin (macOS)
 
 ```bash
 cd streamdeck-plugin
@@ -134,38 +144,10 @@ rm -rf build
 
 ## Troubleshooting
 
-- **No MQTT messages**: verify `MQTT_URL` is set and check plugin logs at:
-  `~/Library/Logs/opendeck/plugins/com.chrisregado.googlemeet.sdPlugin.log`
-- **OpenDeck shows “Disconnected”**: ensure the Chrome extension is enabled and loaded
-  from `browser-extension` in `chrome://extensions`.
+- **Alexa does not duck**: `call-bridge doctor` should list the Jabra device. Join a call on the headset and confirm `jabra inCall=true` and MQTT `jabra/call_active` is `true`.
+- **OpenDeck shows “Disconnected”** on Meet keys: ensure the Chrome extension is enabled and loaded from `browser-extension` in `chrome://extensions`.
 - **Chrome extension not connecting**: ad blockers can block `ws://127.0.0.1:2394`;
   allowlist `meet.google.com`.
-
-## Teams and Zoom (native apps)
-
-Meet cannot see the local Teams or Zoom apps. `mac-call-helper` is a small Swift LaunchAgent that:
-
-- Sleeps until Teams (`com.microsoft.teams2`) or Zoom (`us.zoom.xos`) is running
-- Treats a meeting as active when a meeting window or mute/camera control is present (not microphone level)
-- Publishes the same MQTT topic as Meet (`jabra/call_active` via `meet-mqtt.json`) so Alexa ducking needs no HA change
-- Sends mute/camera/leave/hand/reactions to **that app’s PID** (not the frontmost window)
-- Feeds OpenDeck keys via plugin `com.craigbell.callbridge.sdPlugin` (live mute/camera artwork while idle; grey “disconnected” tiles are not used)
-- Zoom profile keeps mute, camera, leave, raise hand, and Zoom’s real reaction shortcuts (Option-Command-4..8). Background blur is Teams-only.
-- Optionally switches OpenDeck profiles `Teams` / `Zoom` / `Default`
-
-Install (Mac):
-
-```sh
-bash scripts/install-call-bridge.sh
-```
-
-Then grant **Accessibility** (and Input Monitoring if macOS asks) to `~/Library/Application Support/call-bridge/call-bridge` and restart OpenDeck. If Alexa never ducks from Teams/Zoom, also allow that binary under **Local Network**. OpenDeck’s Call Bridge plugin publishes the same MQTT topic as a backup (Meet already required OpenDeck).
-
-```sh
-~/Library/Application\ Support/call-bridge/call-bridge doctor
-```
-
-If Teams or Zoom updates and keys go dumb, run `dump` during a test call and pin new button titles in `MeetingMonitor.swift`. Do not reinstall `com.microsoft.teams.sdPlugin`.
 
 ## Attribution
 

@@ -5,12 +5,12 @@ final class OpenDeckPlugin {
     private let port: Int
     private let uuid: String
     private let registerEvent: String
-    private var task: URLSessionWebSocketTask?
+    private var deck: OpenDeckSocket?
     private var contexts: [String: Set<String>] = [:]
-    private let session = URLSession(configuration: .default)
     private var socket: Int32 = -1
-    private var mqtt: MQTTPublisher?
-    private var lastActive: Bool?
+    private var lastCommandAt: TimeInterval = 0
+    private var lastCommand: String = ""
+    private var lastState: [String: Any] = [:]
 
     init(port: Int, uuid: String, registerEvent: String) {
         self.port = port
@@ -20,25 +20,34 @@ final class OpenDeckPlugin {
 
     func run() {
         connectDaemon()
-        let cfg = BridgeConfig.load()
-        if let hp = cfg.mqttHostPort {
-            let client = MQTTPublisher(
-                host: hp.0, port: hp.1, user: cfg.mqttUser, pass: cfg.mqttPass, topic: cfg.mqttTopic,
-                clientId: "call-bridge-plugin-\(getpid())")
-            mqtt = client
-            client.start()
-        }
         connectOpenDeck()
         RunLoop.main.run()
     }
 
     private func connectOpenDeck() {
-        guard let url = URL(string: "ws://127.0.0.1:\(port)") else { return }
-        let task = session.webSocketTask(with: url)
-        self.task = task
-        task.resume()
-        send(["event": registerEvent, "uuid": uuid])
-        receiveLoop()
+        deck?.cancel()
+        let sock = OpenDeckSocket(port: port)
+        deck = sock
+        sock.onMessage = { [weak self] text in
+            self?.handleDeck(text)
+        }
+        sock.onReady = { [weak self] in
+            guard let self else { return }
+            sock.send(["event": self.registerEvent, "uuid": self.uuid]) { error in
+                if let error {
+                    Log.line("plugin: register failed \(error.localizedDescription)")
+                    return
+                }
+                Log.line("plugin: registered with OpenDeck")
+            }
+        }
+        sock.onFail = { [weak self] message in
+            Log.line("opendeck ws error \(message)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self?.connectOpenDeck()
+            }
+        }
+        sock.connect()
     }
 
     private func connectDaemon() {
@@ -67,6 +76,7 @@ final class OpenDeckPlugin {
             }
             return
         }
+        Log.line("plugin: connected to daemon")
         DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.daemonReadLoop()
         }
@@ -96,6 +106,10 @@ final class OpenDeckPlugin {
     }
 
     private func sendCommand(_ action: String) {
+        if socket < 0 {
+            Log.line("plugin: drop \(action); daemon socket down")
+            return
+        }
         let line = "{\"action\":\"\(action)\"}\n"
         let data = Data(line.utf8)
         data.withUnsafeBytes { raw in
@@ -103,23 +117,7 @@ final class OpenDeckPlugin {
                 _ = Darwin.send(socket, base, data.count, 0)
             }
         }
-    }
-
-    private func receiveLoop() {
-        task?.receive { [weak self] result in
-            switch result {
-            case .failure(let err):
-                Log.line("opendeck ws error \(err)")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    self?.connectOpenDeck()
-                }
-            case .success(let message):
-                if case .string(let text) = message {
-                    self?.handleDeck(text)
-                }
-                self?.receiveLoop()
-            }
-        }
+        Log.line("plugin: \(action)")
     }
 
     private func handleDeck(_ text: String) {
@@ -129,34 +127,41 @@ final class OpenDeckPlugin {
         let type = event["event"] as? String ?? ""
         let action = event["action"] as? String ?? ""
         let context = event["context"] as? String ?? ""
+        if type != "deviceDidConnect" {
+            Log.line("plugin: event \(type) \(action)")
+        }
         if type == "willAppear", !action.isEmpty, !context.isEmpty {
             var set = contexts[action] ?? []
             set.insert(context)
             contexts[action] = set
+            if !lastState.isEmpty {
+                applyState(lastState)
+            }
         } else if type == "willDisappear" {
             contexts[action]?.remove(context)
         } else if type == "keyUp" {
             if let cmd = Self.actionToCommand[action] {
+                let now = Date().timeIntervalSince1970
+                if cmd == lastCommand, now - lastCommandAt < 0.35 { return }
+                lastCommand = cmd
+                lastCommandAt = now
                 sendCommand(cmd)
             }
         }
     }
 
     private func applyState(_ obj: [String: Any]) {
+        lastState = obj
         let active = obj["active"] as? Bool ?? false
-        if active != lastActive {
-            if active {
-                mqtt?.publish("true")
-            } else if lastActive == true {
-                mqtt?.publish("false")
-            }
-            lastActive = active
-        }
         let muted = obj["muted"] as? Bool
         let cameraOn = obj["cameraOn"] as? Bool
         let handUp = obj["handUp"] as? Bool
         let blurred = obj["blurred"] as? Bool
-        setStates(action: "com.craigbell.callbridge.togglemute", state: toggleState(active: active, on: muted.map { !$0 }, idle: 2))
+        if let muted {
+            setStates(action: "com.craigbell.callbridge.togglemute", state: muted ? 1 : 2)
+        } else {
+            setStates(action: "com.craigbell.callbridge.togglemute", state: active ? 2 : 0)
+        }
         setStates(action: "com.craigbell.callbridge.togglecamera", state: toggleState(active: active, on: cameraOn, idle: 2))
         setStates(action: "com.craigbell.callbridge.togglehand", state: toggleState(active: active, on: handUp, idle: 1))
         setStates(action: "com.craigbell.callbridge.toggleblur", state: toggleState(active: active, on: blurred, idle: 1))
@@ -174,20 +179,12 @@ final class OpenDeckPlugin {
 
     private func setStates(action: String, state: Int) {
         for context in contexts[action] ?? [] {
-            send([
+            deck?.send([
                 "event": "setState",
                 "context": context,
                 "payload": ["state": state],
             ])
         }
-    }
-
-    private func send(_ obj: [String: Any]) {
-        guard JSONSerialization.isValidJSONObject(obj),
-              let data = try? JSONSerialization.data(withJSONObject: obj),
-              let text = String(data: data, encoding: .utf8)
-        else { return }
-        task?.send(.string(text)) { _ in }
     }
 
     private static let actionToCommand: [String: String] = [

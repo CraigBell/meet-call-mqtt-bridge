@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -12,16 +13,10 @@ ICON = f"plugins/{PLUGIN}/icons"
 ZOOM_ICON = f"{ICON}/zoom"
 DEVICE = "99-355499441494-293S"
 
-VOL_DOWN = (
-    "osascript -e 'set vol to output volume of (get volume settings)' "
-    "-e 'set n to vol - 10' -e 'if n < 0 then set n to 0' "
-    "-e 'set volume output volume n'"
-)
-VOL_UP = (
-    "osascript -e 'set vol to output volume of (get volume settings)' "
-    "-e 'set n to vol + 10' -e 'if n > 100 then set n to 100' "
-    "-e 'set volume output volume n'"
-)
+# Jabra by name (device ids change). Never touch "Microsoft Teams Audio".
+_BRIDGE = str(Path.home() / "Library/Application Support/call-bridge/call-bridge")
+VOL_DOWN = f'"{_BRIDGE}" volume-down'
+VOL_UP = f'"{_BRIDGE}" volume-up'
 
 NAME_TO_UUID = {
     "Background blur": "com.craigbell.callbridge.toggleblur",
@@ -240,12 +235,78 @@ def fix_home_key(key: dict | None) -> dict | None:
     return out
 
 
+MUTE_UUIDS = {
+    "com.craigbell.callbridge.togglemute",
+    "com.chrisregado.googlemeet.togglemic",
+}
+LEAVE_UUIDS = {
+    "com.craigbell.callbridge.leave",
+    "com.chrisregado.googlemeet.leavecall",
+}
+
+
+def retarget_keep_look(key: dict, uuid: str, min_states: int) -> dict:
+    """Keep the existing pad artwork; only the action UUID changes."""
+    out = deepcopy(key)
+    action = dict(out.get("action") or {})
+    action["plugin"] = PLUGIN
+    action["uuid"] = uuid
+    action["property_inspector"] = ""
+    action["disable_automatic_states"] = True
+    if uuid.endswith("leave"):
+        action["supported_in_multi_actions"] = True
+    states = deepcopy(out.get("states") or action.get("states") or [])
+    if states and min_states > 1:
+        while len(states) < min_states:
+            states.append(deepcopy(states[0]))
+        action["states"] = deepcopy(states)
+    out["action"] = action
+    out["states"] = states
+    out["settings"] = {}
+    return out
+
+
+def patch_jabra_pad_keys(keys: list) -> list:
+    """Mute and leave on every profile control Jabra; icons stay per-page."""
+    out = []
+    for key in keys:
+        if not key:
+            out.append(key)
+            continue
+        uuid = (key.get("action") or {}).get("uuid")
+        if uuid in MUTE_UUIDS:
+            patched = retarget_keep_look(key, "com.craigbell.callbridge.togglemute", 3)
+            patched["context"] = key.get("context")
+            out.append(patched)
+        elif uuid in LEAVE_UUIDS:
+            patched = retarget_keep_look(key, "com.craigbell.callbridge.leave", 2)
+            patched["context"] = key.get("context")
+            out.append(patched)
+        else:
+            out.append(key)
+    return out
+
+
+def patch_jabra_pad(profile_dir: Path) -> None:
+    for name in ("Default.json", "Meet.json", "Teams.json", "Zoom.json"):
+        path = profile_dir / name
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        data["keys"] = patch_jabra_pad_keys(data.get("keys", []))
+        write_profile(path, data)
+        print(f"{name} mute/leave -> Jabra HID, artwork kept")
+
+
 def write_profile(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
 def main() -> None:
     profile_dir = Path.home() / "Library/Application Support/opendeck/profiles" / DEVICE
+    if "--mute-look-only" in sys.argv or "--jabra-pad" in sys.argv:
+        patch_jabra_pad(profile_dir)
+        return
     teams = profile_dir / "Teams.json"
     backup = profile_dir / "Teams.json.bak_callbridge"
     if not backup.exists():
@@ -272,9 +333,21 @@ def main() -> None:
     print(f"rewired {teams}")
     print(f"wrote {profile_dir / 'Zoom.json'} (no blur; Zoom-blue controls)")
 
+    meet = profile_dir / "Meet.json"
+    if meet.exists():
+        mdata = json.loads(meet.read_text())
+        mkeys = patch_jabra_pad_keys(mdata.get("keys", []))
+        if len(mkeys) > 8:
+            mkeys[7] = fix_volume_key(mkeys[7], up=False)
+            mkeys[8] = fix_volume_key(mkeys[8], up=True)
+        mdata["keys"] = mkeys
+        write_profile(meet, mdata)
+        print("Meet.json mute/leave -> Jabra; volume keys -> Jabra")
+
     default = profile_dir / "Default.json"
     data = json.loads(default.read_text())
-    keys = data.get("keys", [])
+    keys = patch_jabra_pad_keys(data.get("keys", []))
+    data["keys"] = keys
     has_zoom = any(
         (k or {}).get("settings", {}).get("profile") == "Zoom" for k in keys if k
     )
@@ -308,7 +381,10 @@ def main() -> None:
                     for state in collection:
                         state["image"] = f"{ZOOM_ICON}/logo@2x.png"
         write_profile(default, data)
-        print("Default.json Zoom key icon updated")
+        print("Default.json mute/leave -> Jabra; Zoom key icon updated")
+    else:
+        write_profile(default, data)
+        print("Default.json mute/leave -> Jabra")
 
 
 if __name__ == "__main__":

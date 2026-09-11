@@ -20,7 +20,6 @@ const eventHandlers = [
   new CaptionsEventHandler(connectionManager),
   new EmojiReactEventHandler(connectionManager),
   new ZenModeEventHandler(connectionManager),
-  new MeetingStateEventHandler(connectionManager),
 ];
 
 connectionManager.initialize();

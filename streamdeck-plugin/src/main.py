@@ -10,7 +10,6 @@ from event_handlers.hand_toggle_event_handler import HandToggleEventHandler
 from event_handlers.leave_call_event_handler import LeaveCallEventHandler
 from event_handlers.mic_toggle_event_handler import MicToggleEventHandler
 from event_handlers.mute_mic_event_handler import MuteMicEventHandler
-from event_handlers.meeting_state_event_handler import MeetingStateEventHandler
 from event_handlers.open_meet_event_handler import OpenMeetEventHandler
 from event_handlers.participants_toggle_event_handler import ParticipantsToggleEventHandler
 from event_handlers.pin_presentation_toggle_event_handler import PinPresentationToggleEventHandler
@@ -60,7 +59,6 @@ def register_handlers(
         LeaveCallEventHandler(stream_deck_client, browser_manager),
         MicToggleEventHandler(stream_deck_client, browser_manager),
         MuteMicEventHandler(stream_deck_client, browser_manager),
-        MeetingStateEventHandler(stream_deck_client, browser_manager),
         OpenMeetEventHandler(stream_deck_client, browser_manager),
         ParticipantsToggleEventHandler(stream_deck_client, browser_manager),
         PinPresentationToggleEventHandler(stream_deck_client, browser_manager),

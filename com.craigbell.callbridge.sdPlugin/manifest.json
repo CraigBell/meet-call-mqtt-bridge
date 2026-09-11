@@ -2,7 +2,7 @@
   "SDKVersion": 2,
   "Author": "Craig Bell",
   "Name": "Call Bridge",
-  "Description": "Teams and Zoom meeting controls with mute/camera state. Alexa ducking uses the existing MQTT topic.",
+  "Description": "Teams and Zoom meeting controls. Alexa ducking is Jabra-based and VC-agnostic.",
   "Icon": "icons/plugin",
   "Category": "Call Bridge",
   "CategoryIcon": "icons/plugin",
@@ -15,7 +15,7 @@
       "Icon": "icons/toggleMute/actions/ToggleMute",
       "Name": "Mute",
       "UUID": "com.craigbell.callbridge.togglemute",
-      "Tooltip": "Mute or unmute the native Teams or Zoom meeting.",
+      "Tooltip": "Mute or unmute the Jabra Engage 75 mic.",
       "SupportedInMultiActions": false,
       "States": [
         { "Image": "icons/toggleMute/states/MuteDisabled", "Name": "Disconnected" },

@@ -4,13 +4,17 @@ import Foundation
 final class Daemon {
     private let config = BridgeConfig.load()
     private let monitor = MeetingMonitor()
+    private let jabra = JabraMonitor()
+    private let hid = JabraHID()
     private let server = ControlServer()
     private var mqtt: MQTTPublisher?
-    private var publishedByUs = false
-    private var lastProfile: String?
+    private var callMuted: Bool?
 
     func run() {
         _ = AXScanner.isTrusted(prompt: true)
+        if !Keystroke.requestPostEvents() {
+            Log.line("post-event/input monitoring not granted; Teams/Zoom keys may do nothing")
+        }
         try? FileManager.default.createDirectory(at: Paths.support, withIntermediateDirectories: true)
         if let hp = config.mqttHostPort {
             let client = MQTTPublisher(
@@ -18,63 +22,74 @@ final class Daemon {
                 topic: config.mqttTopic, clientId: "call-bridge-daemon")
             mqtt = client
             client.start()
+            client.publish("false")
             Log.line("mqtt topic \(config.mqttTopic)")
         } else {
             Log.line("mqtt disabled (no MQTT_URL)")
         }
-        server.stateProvider = { [weak self] in self?.monitor.state ?? CallState() }
+        server.stateProvider = { [weak self] in self?.deckState() ?? CallState() }
         server.onCommand = { [weak self] action in
-            self?.monitor.perform(action)
+            self?.handleCommand(action)
         }
         server.start(path: Paths.socket)
-        monitor.onChange = { [weak self] state in
-            self?.handle(state)
+        jabra.onChange = { [weak self] inCall in
+            self?.handleJabra(inCall)
         }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.tick() }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.tick() }
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            self?.tick()
+        hid.onMutePress = { [weak self] in
+            self?.flipCallMute(reason: "jabra-button")
         }
-        RunLoop.main.add(timer, forMode: .common)
-        tick()
-        Log.line("daemon running")
+        jabra.start()
+        hid.start()
+        Log.line("daemon running (jabra HID mute/hangup, no AX poll)")
         RunLoop.main.run()
     }
 
-    private func tick() {
-        if AXScanner.meetingApps().isEmpty && !monitor.state.active {
-            // Stay cheap when neither app is open.
-            return
+    private func handleCommand(_ action: String) {
+        switch action {
+        case "toggleMute":
+            if let next = hid.toggleMute(currentlyMuted: callMuted, inCall: jabra.inCall) {
+                setCallMuted(next, reason: "opendeck")
+            }
+        case "leave":
+            _ = hid.hangUp(inCall: jabra.inCall)
+        case "volumeUp":
+            JabraMonitor.adjustVolume(0.10)
+        case "volumeDown":
+            JabraMonitor.adjustVolume(-0.10)
+        default:
+            monitor.perform(action)
         }
-        _ = monitor.scan()
     }
 
-    private func handle(_ state: CallState) {
-        server.broadcast(state)
-        if state.active {
-            mqtt?.publish("true")
-            publishedByUs = true
-            if config.switchProfiles {
-                let wanted = state.app == "zoom" ? config.zoomProfile : config.teamsProfile
-                if lastProfile != wanted {
-                    ProfileSwitcher.switchTo(wanted)
-                    lastProfile = wanted
-                }
-            }
-        } else if publishedByUs {
-            mqtt?.publish("false")
-            publishedByUs = false
-            if config.switchProfiles, lastProfile != nil {
-                ProfileSwitcher.switchTo(config.defaultProfile)
-                lastProfile = nil
-            }
+    private func flipCallMute(reason: String) {
+        setCallMuted(!(callMuted ?? false), reason: reason)
+    }
+
+    private func setCallMuted(_ muted: Bool, reason: String) {
+        callMuted = muted
+        Log.line("call muted=\(muted) source=\(reason)")
+        server.broadcast(deckState())
+    }
+
+    private func handleJabra(_ inCall: Bool) {
+        if !inCall {
+            callMuted = nil
+        } else if callMuted == nil {
+            callMuted = false
         }
-        Log.line(
-            "state active=\(state.active) app=\(state.app ?? "-") pid=\(state.pid ?? 0) muted=\(String(describing: state.muted)) camera=\(String(describing: state.cameraOn))"
-        )
+        mqtt?.publish(inCall ? "true" : "false")
+        server.broadcast(deckState())
+        Log.line("state active=\(inCall) source=jabra")
+    }
+
+    private func deckState() -> CallState {
+        var state = CallState()
+        state.active = jabra.inCall
+        state.muted = callMuted
+        if let target = MeetingMonitor.activeCallTarget() {
+            state.app = target.kind
+            state.pid = target.pid
+        }
+        return state
     }
 }
